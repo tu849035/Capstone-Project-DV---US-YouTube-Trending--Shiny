@@ -1,0 +1,134 @@
+---
+title: "US YouTube Trending"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows #defaultnya columns
+    vertical_layout: scroll #defaultnya fill
+    theme:
+      version: 4
+      bootswatch: cyborg
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+
+options(scipen = 99) # me-non-aktifkan scientific notation
+library(tidyverse) # koleksi beberapa package R
+library(dplyr) # grammar of data manipulation
+library(readr) # membaca data
+library(ggplot2) # plot statis
+library(plotly) # plot interaktif
+library(glue) # setting tooltip
+library(scales) # mengatur skala pada plot
+
+vids <- read_csv("youtubetrends.csv")
+
+vids_clean <- vids %>% 
+  mutate(
+    # mengubah tipe data
+    channel_title = as.factor(channel_title),
+    category_id = as.factor(category_id),
+    publish_when = as.factor(publish_when),
+    publish_wday = as.factor(publish_wday),
+    timetotrend = as.factor(timetotrend),
+    
+    #menambahkan kolom: `nama kolom`  = value dari kolom
+    likesp = likes/views,
+    dislikesp =  dislikes / views,
+    commentp =comment_count / views
+  ) %>% 
+  # deselect kolom
+  select(-c(comments_disabled, ratings_disabled, video_error_or_removed))
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Trending Categories of YouTube US 2017
+
+```{r}
+vids_count <- vids_clean %>% 
+  group_by(category_id) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  ungroup() %>% 
+  mutate(label = glue("Category: {category_id}
+                      Video Counts: {count} Videos"))
+
+plot1 <- vids_count %>% 
+  ggplot(aes(x = count,
+             y = reorder(category_id, count), 
+             fill = count,
+             text = label)) + 
+  geom_col() +
+  scale_fill_gradient(low = "red", high = "black") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(x = 'Video Count',
+       y = NULL)
+
+ggplotly(plot1, tooltip = "text")
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Top 10 Channel on Entertainment
+
+```{r}
+vids_top_channel <- vids_clean %>% 
+  filter(category_id == "Entertainment") %>% 
+  group_by(channel_title) %>% 
+  summarise(sum_views = sum(views)) %>% 
+  arrange(desc(sum_views)) %>% 
+  top_n(10)
+
+vids_10 <- vids_top_channel %>% 
+  mutate(label = glue("Channel: {channel_title}
+                       Sum Views: {scales::comma(sum_views)} Views"))
+
+plot2 <- vids_10 %>% 
+  ggplot(aes(x = sum_views,
+             y = reorder(channel_title, sum_views),
+             color = sum_views,
+             text = label)) +
+  geom_point(size = 3) +
+  geom_segment(aes(x = 0,  
+                   xend = sum_views,   
+                   yend = channel_title), 
+               size = 1) + 
+  labs(x = 'Total Views',
+       y = NULL) +
+  scale_color_gradient(low = "red", high = "black") +
+  scale_x_continuous(labels = scales::comma) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = margin(r = 20))
+
+ggplotly(plot2, tooltip = "text")
+```
+
+### Viewers Activity of Entertainment Videos
+
+```{r}
+vids_trend <- vids_clean %>%
+  filter(category_id == "Entertainment") %>% 
+  group_by(publish_hour) %>%
+  summarise(mean_views = mean(views)) %>%
+  ungroup() %>% 
+  mutate(label = glue("Publish Hour: {publish_hour}
+                      Average Views: {scales::comma(mean_views)} Views"))
+
+plot3 <- vids_trend %>% 
+  ggplot(aes(x = publish_hour,
+             y = mean_views, )) +
+  geom_line(color = "red") +
+  geom_point(aes(text = label)) +
+  scale_y_continuous(labels = scales::comma) +
+labs(title = NULL,
+       x = "Publish hour",
+       y = "Average viewers") +
+  theme_minimal()
+
+ggplotly(plot3, tooltip = "text")
+```
